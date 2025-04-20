@@ -1,16 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib as mpl
+import plotly.express as px
 import glob
 import random
-
-# 设置中文字体
-mpl.font_manager.fontManager.addfont('./SimHei.ttf') #临时注册新的全局字体
-
-plt.rcParams['font.sans-serif']=['SimHei'] #用来正常显示中文标签
-
-plt.rcParams['axes.unicode_minus']=False#用来正常显示负号
 
 # 读取监测点元数据
 stations = pd.DataFrame({
@@ -59,7 +51,7 @@ melted = full_df.melt(
 merged = pd.merge(melted, stations, left_on='site_id', right_on='监测点编号')
 
 # Streamlit 应用
-st.title('空气质量数据可视化')
+st.title('广州空气质量')
 
 # 侧边栏
 with st.sidebar:
@@ -74,7 +66,7 @@ with st.sidebar:
     selected_pollutants = st.multiselect('选择污染物', available_pollutants, default=[available_pollutants[0]])
 
     # 用户选择图表类型
-    chart_type = st.selectbox('选择图表类型', ['scatter','line'])
+    chart_type = st.selectbox('选择图表类型', ['scatter', 'line'])
 
     # 颜色管理
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -93,17 +85,17 @@ with st.sidebar:
             pollutant_colors[pollutant] = st.color_picker(f'选择 {pollutant} 的颜色', default_color)
 
     # 用户选择标记和线型
-    selected_marker = st.selectbox('选择标记', ['o', 's', '^', 'v', '+', 'x', 'd'])  # 常用标记
+    selected_marker = st.selectbox('选择标记', ['circle', 'square', 'triangle-up', 'triangle-down', 'cross', 'x', 'diamond'])  # 常用标记
     if chart_type == 'line':
-        selected_linestyle = st.selectbox('选择线型', ['-', '--', ':', '-.'])  # 常用线型
+        selected_linestyle = st.selectbox('选择线型', ['solid', 'dash', 'dot', 'dashdot'])  # 常用线型
     else:
         selected_linestyle = None
 
     # 用户选择散点大小
     if chart_type == 'scatter':
-        selected_size = st.slider('选择散点大小', min_value=1, max_value=100, value=15)
+        selected_size = st.slider('选择散点大小', min_value=5, max_value=20, value=10)
     else:
-        selected_size = 15  # 默认大小
+        selected_size = None
 
 # 过滤数据
 filtered_data = merged[
@@ -111,26 +103,41 @@ filtered_data = merged[
     (merged['type'].isin(selected_pollutants))
 ]
 
-# 绘制图表
+# 绘制交互式图表
 if not filtered_data.empty:
-    fig, ax = plt.subplots(figsize=(12, 6))
-    for pollutant in selected_pollutants:
-        site_data = filtered_data[(filtered_data['监测点名称'] == selected_site) & (filtered_data['type'] == pollutant)]
-        if chart_type == 'line':
-            ax.plot(site_data['datetime'], site_data['value'], 
-                    marker=selected_marker, linestyle=selected_linestyle, 
-                    label=f'{selected_site} - {pollutant}', color=pollutant_colors[pollutant])
-        elif chart_type == 'scatter':
-            ax.scatter(site_data['datetime'], site_data['value'], 
-                       marker=selected_marker, label=f'{selected_site} - {pollutant}', 
-                       color=pollutant_colors[pollutant], s=selected_size)
+    if chart_type == 'line':
+        fig = px.line(
+            filtered_data,
+            x='datetime',
+            y='value',
+            color='type',  # 使用污染物类型作为颜色区分
+            hover_data=['监测点名称', 'value'],  # 鼠标悬停时显示的信息
+            title=f'{selected_site} - {", ".join(selected_pollutants)}',
+            symbol='type',  # 使用污染物类型作为标记区分
+            markers=True,  # 显示标记
+            line_dash='type',  # 使用污染物类型作为线型区分
+            color_discrete_map=pollutant_colors,  # 使用用户选择的颜色
+            symbol_sequence=[selected_marker],  # 使用用户选择的标记
+            line_dash_sequence=[selected_linestyle] if selected_linestyle else None,  # 使用用户选择的线型
+        )
+    elif chart_type == 'scatter':
+        # 删除 NaN 值
+        filtered_data = filtered_data.dropna(subset=['value'])
 
-    ax.set_xlabel('时间')
-    ax.set_ylabel('浓度值')
-    ax.tick_params(axis='x', rotation=45)
-    ax.grid(True)
-    ax.legend()
-    plt.tight_layout()
-    st.pyplot(fig)
+        fig = px.scatter(
+            filtered_data,
+            x='datetime',
+            y='value',
+            color='type',  # 使用污染物类型作为颜色区分
+            hover_data=['监测点名称', 'value'],  # 鼠标悬停时显示的信息
+            title=f'{selected_site} - {", ".join(selected_pollutants)}',
+            symbol='type',  # 使用污染物类型作为标记区分
+            color_discrete_map=pollutant_colors,  # 使用用户选择的颜色
+            symbol_sequence=[selected_marker],  # 使用用户选择的标记
+            size='value',  # 使用 value 作为散点大小
+            size_max=selected_size,  # 设置散点最大大小
+        )
+
+    st.plotly_chart(fig)
 else:
     st.write('没有选择任何数据。')
